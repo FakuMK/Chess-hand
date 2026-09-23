@@ -46,11 +46,11 @@ pip install pyserial
 Debes tener Stockfish instalado en tu sistema y ajustar esta variable en el código:
 
 python
-ruta_stockfish = "/usr/bin/stockfish"
+#linux# ruta_stockfish = "/usr/bin/stockfish"
 
+en windows la ruta sera diferente, se muestra al instalar stockfish
 
 En Linux puedes comprobar la ruta con:
-
 
 which stockfish
 
@@ -68,6 +68,9 @@ indice_camara = 1
 nombre_foto = "fotoprev.png"
 ruta_stockfish = "/usr/bin/stockfish"
 
+PUERTO_SERIE = "/dev/ttyACM0"  # Linux: /dev/ttyACM0 o /dev/ttyUSB0
+# PUERTO_SERIE = "COM3"        # Windows
+BAUDIOS = 9600
 
 ### Parámetros importantes
 
