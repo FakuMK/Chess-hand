@@ -91,6 +91,99 @@ def matriz_ocupacion_desde_tablero(tablero):
     return matriz
 
 
+def matriz_colores_desde_tablero(tablero):
+    """Construye la matriz de colores usando el mismo orden que python-chess."""
+    matriz = np.zeros((8, 8), dtype=int)
+    for square, piece in tablero.piece_map().items():
+        fila = 7 - chess.square_rank(square)
+        col = chess.square_file(square)
+        matriz[fila, col] = 1 if piece.color == chess.WHITE else 2
+    return matriz
+
+
+def aplicar_transformacion(matriz, transformacion):
+    """Aplica una de las ocho orientaciones posibles al tablero detectado."""
+    if transformacion == "normal":
+        return matriz.copy()
+    if transformacion == "flip_vertical":
+        return np.flipud(matriz).copy()
+    if transformacion == "flip_horizontal":
+        return np.fliplr(matriz).copy()
+    if transformacion == "rotacion_180":
+        return np.rot90(matriz, 2).copy()
+    if transformacion == "rotacion_90_cw":
+        return np.rot90(matriz, -1).copy()
+    if transformacion == "rotacion_90_ccw":
+        return np.rot90(matriz, 1).copy()
+    if transformacion == "transpuesta":
+        return matriz.T.copy()
+    if transformacion == "antitranspuesta":
+        return np.rot90(matriz, 2).T.copy()
+    raise ValueError(f"Transformación desconocida: {transformacion}")
+
+
+def transformaciones_posibles():
+    return [
+        "normal",
+        "flip_vertical",
+        "flip_horizontal",
+        "rotacion_180",
+        "rotacion_90_cw",
+        "rotacion_90_ccw",
+        "transpuesta",
+        "antitranspuesta",
+    ]
+
+
+def inferir_transformacion(matriz_ocupacion, matriz_colores, tablero):
+    """
+    Deduce how the camera matrix must be transformed to match python-chess.
+
+    The detector can return the board rotated or mirrored depending on the
+    camera position.  The previous code only handled a vertical flip, which
+    made valid physical moves look illegal.
+    """
+    matriz_ocupacion = normalizar_matriz(matriz_ocupacion)
+    matriz_colores = normalizar_matriz(matriz_colores)
+
+    ocupacion_esperada = matriz_ocupacion_desde_tablero(tablero)
+    colores_esperados = matriz_colores_desde_tablero(tablero)
+
+    mejor_transformacion = None
+    mejor_error_ocupacion = None
+    mejor_error_color = None
+
+    for transformacion in transformaciones_posibles():
+        ocupacion_candidata = aplicar_transformacion(
+            matriz_ocupacion, transformacion
+        )
+        colores_candidatos = aplicar_transformacion(
+            matriz_colores, transformacion
+        )
+
+        error_ocupacion = int(
+            np.count_nonzero(ocupacion_candidata != ocupacion_esperada)
+        )
+        mascara_fichas = (ocupacion_candidata != 0) | (ocupacion_esperada != 0)
+        error_color = int(
+            np.count_nonzero(
+                colores_candidatos[mascara_fichas]
+                != colores_esperados[mascara_fichas]
+            )
+        )
+
+        if (
+            mejor_transformacion is None
+            or (error_ocupacion, error_color)
+            < (mejor_error_ocupacion, mejor_error_color)
+        ):
+            mejor_transformacion = transformacion
+            mejor_error_ocupacion = error_ocupacion
+            mejor_error_color = error_color
+
+    return mejor_transformacion, mejor_error_ocupacion, mejor_error_color
+
+
 def detectar_cambios(matriz_anterior, matriz_actual):
     anterior = normalizar_matriz(matriz_anterior)
     actual = normalizar_matriz(matriz_actual)
@@ -665,6 +758,7 @@ def jugar_con_camara_y_stockfish():
     matriz_base = None
     matriz_colores_base = None
     imagen_base = None
+    transformacion_base = None
 
     if not camara.isOpened():
         print("No se pudo abrir la camara")
@@ -711,6 +805,7 @@ def jugar_con_camara_y_stockfish():
                 matriz_base = None
                 matriz_colores_base = None
                 imagen_base = None
+                transformacion_base = None
                 print("")
                 print("Partida reiniciada")
                 print(tablero)
@@ -722,17 +817,39 @@ def jugar_con_camara_y_stockfish():
                     print("Error capturando base:", error)
                     continue
 
-                # Determinar orientación en base a colores (rojo=blancas, azul=negras)
-                orientacion = determinar_orientacion(matriz_colores_nueva)
-                print(f"Orientacion detectada: {orientacion}")
+                # Deducir la orientación completa (giro/reflejo) comparando
+                # la captura con la posición conocida de python-chess.
+                (
+                    transformacion_nueva,
+                    error_ocupacion,
+                    error_color,
+                ) = inferir_transformacion(
+                    matriz_base_nueva,
+                    matriz_colores_nueva,
+                    tablero,
+                )
+                print(
+                    f"Transformacion detectada: {transformacion_nueva} "
+                    f"(errores ocupacion={error_ocupacion}, color={error_color})"
+                )
 
-                if orientacion == "invertida":
-                    matriz_base_nueva = np.flipud(matriz_base_nueva)
-                    matriz_colores_nueva = np.flipud(matriz_colores_nueva)
+                if error_ocupacion > 0:
+                    print(
+                        "Aviso: la captura no coincide exactamente con el tablero interno; "
+                        "revisa que las 64 casillas y las piezas sean visibles."
+                    )
+
+                matriz_base_nueva = aplicar_transformacion(
+                    matriz_base_nueva, transformacion_nueva
+                )
+                matriz_colores_nueva = aplicar_transformacion(
+                    matriz_colores_nueva, transformacion_nueva
+                )
 
                 matriz_base = matriz_base_nueva
                 matriz_colores_base = matriz_colores_nueva
                 imagen_base = imagen_base_nueva
+                transformacion_base = transformacion_nueva
 
                 print("")
                 print("Estado base capturado")
@@ -756,11 +873,15 @@ def jugar_con_camara_y_stockfish():
                     print("Error capturando movimiento:", error)
                     continue
 
-                # Aplicar misma orientación que la base
-                orientacion_actual = determinar_orientacion(matriz_colores_actual)
-                if orientacion_actual == "invertida":
-                    matriz_actual = np.flipud(matriz_actual)
-                    matriz_colores_actual = np.flipud(matriz_colores_actual)
+                # Aplicar exactamente la misma orientación usada en la base.
+                # No se vuelve a decidir aquí: si no, un cambio de iluminación
+                # o una detección de color imperfecta puede invertir el tablero.
+                matriz_actual = aplicar_transformacion(
+                    matriz_actual, transformacion_base
+                )
+                matriz_colores_actual = aplicar_transformacion(
+                    matriz_colores_actual, transformacion_base
+                )
 
                 mostrar_tablero("tablero_actual", imagen_actual)
 
@@ -788,6 +909,7 @@ def jugar_con_camara_y_stockfish():
                     print("Resultado:", tablero.result())
                     matriz_base = None
                     matriz_colores_base = None
+                    transformacion_base = None
                     continue
 
                 respuesta = motor.play(tablero, chess.engine.Limit(time=0.1, depth=10, nodes=1000))
@@ -806,6 +928,7 @@ def jugar_con_camara_y_stockfish():
                 matriz_base = None
                 matriz_colores_base = None
                 imagen_base = None
+                transformacion_base = None
 
     finally:
         print("")
