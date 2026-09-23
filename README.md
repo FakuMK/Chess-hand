@@ -201,26 +201,10 @@ Guarda el script, por ejemplo como main.py, y ejecuta:
 python main.py
 
 
-## Comunicación serial
-
-Actualmente la parte serial está simulada:
-
-- abrir_serial() no abre un puerto real.
-- enviar_movimiento_serial(...) imprime el movimiento en consola.
-- Además guarda los movimientos en movimientos_stockfish.log.
-
-Si quieres conectarlo a un brazo robótico real, debes:
-
-1. descomentar import serial
-2. definir puerto y baudios
-3. implementar la apertura real del puerto
-4. enviar la jugada en el formato esperado por tu microcontrolador
-
 ## Posibles mejoras
 
 - Detectar tipos de piezas, no solo ocupación y color.
 - Mejorar la robustez frente a iluminación variable.
-- Integrar serial real con Arduino o un brazo robótico.
 - Crear una interfaz gráfica más completa.
 
 ## Limitaciones actuales
@@ -229,7 +213,6 @@ Si quieres conectarlo a un brazo robótico real, debes:
 - Asume una codificación por color fija: rojo para blancas y azul para negras.
 - La detección puede fallar si no se reconocen correctamente las 64 casillas.
 - No distingue el tipo de pieza, solo presencia y color.
-- La comunicación serial real no está activa.
 
 
 ## Ejemplo de salida en consola
@@ -245,6 +228,6 @@ Orientacion detectada: normal
 Estado base capturado
 Jugada detectada del jugador: e2e4
 Stockfish juega: c7c5
-[DUMMY SERIAL] c7c5
+[SERIAL] c7c5
 
 
