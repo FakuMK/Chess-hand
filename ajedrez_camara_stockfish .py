@@ -3,7 +3,8 @@ import numpy as np
 import os
 import chess
 import chess.engine
-#import serial
+import serial
+import time
 
 
 # =========================
@@ -20,8 +21,9 @@ nombre_foto = "fotoprev.png"
 ruta_stockfish = "/usr/bin/stockfish"
 
 # Serie hacia el brazo (ajusta a tu puerto y baudios)
-#PUERTO_SERIE = "/dev/ttyACM0"
-#BAUDIOS = 9600
+PUERTO_SERIE = "/dev/ttyACM0"  # Linux: /dev/ttyACM0 o /dev/ttyUSB0
+# PUERTO_SERIE = "COM3"        # Windows
+BAUDIOS = 9600
 
 umbral_angulo_cuadrado = 20
 umbral_aspecto_cuadrado = 0.4
@@ -178,23 +180,55 @@ def movimiento_legal_desde_matrices(tablero, matriz_anterior, matriz_actual):
 
 
 # =========================
-# SERIAL (DUMMY A CONSOLA)
+# SERIAL
 # =========================
 def abrir_serial():
-    # No abre nada real; solo avisa
-    print("Dummy serial: los movimientos se mostraran en la consola de VSCode")
-    return None
+    try:
+        ser = serial.Serial(
+            port=PUERTO_SERIE,
+            baudrate=BAUDIOS,
+            timeout=1,
+            write_timeout=2
+        )
+        time.sleep(2)
+        print(f"Puerto serial abierto: {PUERTO_SERIE} a {BAUDIOS} baudios")
+        return ser
+    except serial.SerialException as e:
+        print(f"No se pudo abrir el puerto serial {PUERTO_SERIE}: {e}")
+        raise
+
+
+def convertir_uci_a_formato_serial(movimiento_uci: str) -> str:
+    texto = movimiento_uci.strip()
+    if not texto:
+        return texto
+
+    if len(texto) >= 4:
+        origen = texto[0:2]
+        destino = texto[2:4]
+        promocion = texto[4:]
+        if promocion:
+            return f"{origen} {destino} {promocion}"
+        return f"{origen} {destino}"
+
+    return texto
 
 
 def enviar_movimiento_serial(ser, movimiento_uci: str):
-    # Imprime el movimiento simulando envio por serial
-    linea = movimiento_uci.strip()
-    print(f"[DUMMY SERIAL] {linea}")
-    # Opcional: log en archivo para depurar
+    linea = convertir_uci_a_formato_serial(movimiento_uci)
+    if ser is None or not ser.is_open:
+        raise RuntimeError("El puerto serial no está abierto")
+
+    mensaje = (linea + "\n").encode("ascii")
+    ser.write(mensaje)
+    ser.flush()
+
+    print(f"[SERIAL] Movimiento enviado: {linea}")
+
     try:
         with open("movimientos_stockfish.log", "a", encoding="utf-8") as f:
             f.write(linea + "\n")
-    except Exception as e:
+    except OSError as e:
         print(f"No se pudo escribir el log de movimientos: {e}")
 
 
