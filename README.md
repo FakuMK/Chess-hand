@@ -245,4 +245,3 @@ Stockfish juega: c7c5
 [DUMMY SERIAL] c7c5
 
 
-Puedes reemplazar esta sección por la licencia que prefieras, por ejemplo MIT.
